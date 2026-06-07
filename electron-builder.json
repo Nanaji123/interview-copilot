@@ -1,0 +1,135 @@
+{
+  "appId": "com.coprep.desktop",
+  "productName": "CoPrep-AI",
+  "artifactName": "CoPrepAI-Setup-${arch}.${ext}",
+  "copyright": "Copyright © 2024 CoPrep AI Team",
+  "directories": {
+    "output": "release",
+    "buildResources": "assets"
+  },
+  "files": [
+    "dist/**/*",
+    "renderer/dist/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "dist/electron/main.js"
+  },
+  "protocols": [
+    {
+      "name": "CoPrep Protocol",
+      "schemes": [
+        "coprep"
+      ]
+    }
+  ],
+  "mac": {
+    "identity": null,
+    "category": "public.app-category.productivity",
+    "icon": "assets/logo.icns",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "entitlements.plist",
+    "entitlementsInherit": "entitlements.plist",
+    "extendInfo": {
+      "LSUIElement": true,
+      "LSBackgroundOnly": false,
+      "NSSupportsAutomaticTermination": false,
+      "NSMicrophoneUsageDescription": "CoPrep AI uses your microphone to transcribe your interview answers when you unmute the mic.",
+      "NSAudioCaptureUsageDescription": "CoPrep AI captures system audio so interviewer questions can be transcribed during an interview session.",
+      "NSCameraUsageDescription": "CoPrep AI uses screen capture only when you ask it to analyze your screen."
+    },
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    ],
+    "notarize": false
+  },
+  "dmg": {
+    "icon": "assets/logo.icns",
+    "background": "assets/dmg-background.png",
+    "title": "CoPrepAI-Installer-${arch}",
+    "window": {
+      "width": 540,
+      "height": 380
+    },
+    "contents": [
+      {
+        "x": 144,
+        "y": 150,
+        "type": "file"
+      },
+      {
+        "x": 396,
+        "y": 150,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  },
+  "win": {
+    "icon": "assets/logo.ico",
+    "legalTrademarks": "CoPrep AI",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64",
+          "ia32"
+        ]
+      }
+    ],
+    "verifyUpdateCodeSignature": false,
+    "signAndEditExecutable": true
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "assets/logo.ico",
+    "uninstallerIcon": "assets/logo.ico",
+    "installerHeader": "assets/logo.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "CoPrep AI"
+  },
+  "linux": {
+    "icon": "assets/logo.png",
+    "category": "Office",
+    "target": [
+      {
+        "target": "deb",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    ],
+    "maintainer": "CoPrep AI <support@coprep.ai>",
+    "vendor": "CoPrep AI",
+    "synopsis": "AI-powered interview preparation",
+    "description": "AI-powered interview preparation desktop application"
+  },
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "CoPrep-AI",
+      "repo": "CoPrep-desktop-releases",
+      "releaseType": "draft"
+    }
+  ],
+  "afterSign": "scripts/notarize.js"
+}

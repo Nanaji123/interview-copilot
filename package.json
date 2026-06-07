@@ -1,0 +1,75 @@
+{
+  "name": "coprep-desktop",
+  "productName": "CoPrep-AI",
+  "version": "3.2.0",
+  "description": "",
+  "author": "CoPrep AI <support@coprep.ai> (https://www.coprep.ai)",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 concurrently \"vite --config renderer/vite.config.ts\" \"tsc -p tsconfig.electron.json -w\" \"wait-on http://localhost:5173 && electron .\"",
+    "start": "cross-env electron .",
+    "build:renderer": "vite build --config renderer/vite.config.ts",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:renderer && npm run build:electron",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:publish": "npm run build && electron-builder --publish always",
+    "release:mac": "npm run build && electron-builder --mac --publish always",
+    "release:win": "npm run build && electron-builder --win --publish always",
+    "release": "npm run build && electron-builder --publish always",
+    "audit-security": "npm audit --audit-level moderate",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "node scripts/patch-dmg-builder.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coprep-ai/CoPrep-desktop-releases.git"
+  },
+  "keywords": [
+    "interview",
+    "ai",
+    "career",
+    "preparation",
+    "mock-interview"
+  ],
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/coprep-ai/CoPrep-desktop-releases/issues"
+  },
+  "homepage": "https://github.com/coprep-ai/CoPrep-desktop-releases#readme",
+  "dependencies": {
+    "@deepgram/sdk": "^4.11.2",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "electron-updater": "^6.6.2",
+    "koffi": "^2.15.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^15.6.6",
+    "remark-gfm": "^4.0.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^1.8.0",
+    "@electron/notarize": "^3.1.1",
+    "@electron/osx-sign": "^2.3.0",
+    "@types/node": "^24.5.2",
+    "@types/react": "^18.2.21",
+    "@types/react-dom": "^18.2.7",
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.14",
+    "baseline-browser-mapping": "^2.10.32",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.9.3",
+    "electron-builder": "^26.0.12",
+    "png-to-ico": "^3.0.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "wait-on": "^9.0.1"
+  }
+}

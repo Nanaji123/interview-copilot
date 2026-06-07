@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>CoPrep AI</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' http: https: data:; connect-src 'self' http: https: ws: wss: https://coprep.ai https://www.coprep.ai https://aicoprepare-backend.onrender.com wss://aicoprepare-backend.onrender.com http://localhost:8000 ws://localhost:8000 wss://localhost:8000; script-src 'self' 'unsafe-inline' http: https:; style-src 'self' 'unsafe-inline' http: https:; worker-src 'self' blob:;"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="min-h-screen bg-gray-50 text-gray-900 antialiased">
+    <div id="root" class="p-4 text-sm text-gray-600">Loading renderer…</div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,251 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>CoPrep Audio Capture</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; media-src 'self' blob:;"
+    />
+  </head>
+  <body>
+    <script>
+      /**
+       * Hidden Capture Window Script
+       * This window captures audio and streams it to the main window via IPC.
+       * It runs without contentProtection, allowing desktopCapturer API to work.
+       *
+       * Audio strategy:
+       *   - Windows/macOS where supported: getDisplayMedia → loopback audio
+       *
+       * Uses ScriptProcessorNode to send raw PCM audio for processing in the main window.
+       * Includes auto-restart logic with exponential backoff.
+       */
+
+      let desktopStream = null; // Screen video stream (keeps capture session alive)
+      let audioStream = null;   // Audio stream (system loopback where available)
+      let audioContext = null;
+      let scriptProcessor = null;
+      let sourceNode = null;
+      let isCapturing = false;
+
+      // Auto-restart state
+      const MAX_RETRIES = 3;
+      const BASE_RETRY_DELAY_MS = 1000; // 1s, 2s, 4s
+      const STABLE_THRESHOLD_MS = 30000; // reset retry count after 30s stable
+      let retryCount = 0;
+      let stableTimer = null;
+      let isUserStopped = false; // true when user explicitly stops capture
+
+      /**
+       * Clean up all audio resources without sending IPC notifications.
+       * Used internally before a restart attempt.
+       */
+      function cleanupAudioResources() {
+        if (scriptProcessor) {
+          try { scriptProcessor.disconnect(); } catch (_) {}
+          scriptProcessor = null;
+        }
+
+        if (sourceNode) {
+          try { sourceNode.disconnect(); } catch (_) {}
+          sourceNode = null;
+        }
+
+        if (audioContext && audioContext.state !== "closed") {
+          try { audioContext.close(); } catch (_) {}
+          audioContext = null;
+        }
+
+        // Stop audio stream tracks (may be separate from desktopStream on macOS)
+        if (audioStream && audioStream !== desktopStream) {
+          try { audioStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+        }
+        audioStream = null;
+
+        if (desktopStream) {
+          try { desktopStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+          desktopStream = null;
+        }
+
+        if (stableTimer) {
+          clearTimeout(stableTimer);
+          stableTimer = null;
+        }
+
+        isCapturing = false;
+      }
+
+      /**
+       * Called when the audio stream ends unexpectedly (not by user action).
+       * Attempts auto-restart with exponential backoff.
+       */
+      function handleUnexpectedStreamEnd(reason) {
+        if (isUserStopped || !isCapturing) return;
+
+        console.warn("[Capture] Audio stream ended unexpectedly:", reason);
+        cleanupAudioResources();
+
+        if (retryCount >= MAX_RETRIES) {
+          console.error("[Capture] Max retries reached (" + MAX_RETRIES + "), giving up");
+          window.captureAPI.notifyCaptureError(
+            "Audio capture stopped by system after " + MAX_RETRIES + " restart attempts",
+          );
+          window.captureAPI.notifyCaptureStopped();
+          retryCount = 0;
+          return;
+        }
+
+        const delay = BASE_RETRY_DELAY_MS * Math.pow(2, retryCount);
+        retryCount++;
+        console.log(
+          "[Capture] Attempting restart " + retryCount + "/" + MAX_RETRIES + " in " + delay + "ms...",
+        );
+        window.captureAPI.notifyCaptureRestarting(retryCount, MAX_RETRIES);
+
+        setTimeout(() => {
+          if (isUserStopped) return;
+          startCapture();
+        }, delay);
+      }
+
+      async function startCapture() {
+        if (isCapturing) {
+          console.log("[Capture] Already capturing");
+          return;
+        }
+
+        isUserStopped = false;
+
+        try {
+          console.log("[Capture] Starting audio capture...");
+
+          // Step 1: Request display media.
+          // Electron's setDisplayMediaRequestHandler intercepts this call.
+          // The main process request handler grants video and loopback audio
+          // where Electron/Chromium supports it.
+          console.log("[Capture] Requesting display media...");
+          desktopStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true,
+          });
+
+          // Keep video track disabled (saves resources) but alive —
+          // stopping it can terminate the capture session on macOS.
+          desktopStream.getVideoTracks().forEach((track) => {
+            track.enabled = false;
+            track.onended = () => {
+              console.warn("[Capture] Video track ended unexpectedly");
+              handleUnexpectedStreamEnd("Video track ended by system");
+            };
+          });
+
+          // Step 2: Determine audio source.
+          const systemAudioTracks = desktopStream.getAudioTracks();
+
+          if (systemAudioTracks.length > 0) {
+            // System audio via loopback — use it directly.
+            audioStream = desktopStream;
+            console.log("[Capture] System audio available:", systemAudioTracks[0].label);
+          } else {
+            // Do not fall back to the microphone here. This stream is labelled
+            // as screen/interviewer audio in the renderer; using a mic fallback
+            // causes user speech to appear in the interviewer transcript.
+            throw new Error("No system audio track was provided by display capture");
+          }
+
+          const audioTracks = audioStream.getAudioTracks();
+          if (audioTracks.length === 0) {
+            throw new Error("No audio tracks found (system audio and microphone both unavailable)");
+          }
+
+          console.log("[Capture] Audio track:", audioTracks[0].label);
+
+          // Monitor audio track for system-level termination
+          audioTracks[0].onended = () => {
+            console.warn("[Capture] Audio track ended unexpectedly");
+            handleUnexpectedStreamEnd("Audio track ended by system");
+          };
+
+          // Create AudioContext and ScriptProcessorNode to capture raw PCM
+          audioContext = new AudioContext({ sampleRate: 48000 });
+
+          audioContext.onstatechange = (e) => {
+            if (!audioContext) return;
+            console.log("[Capture] AudioContext state changed to:", audioContext.state);
+            if (audioContext.state === "closed" && isCapturing && !isUserStopped) {
+              handleUnexpectedStreamEnd("AudioContext closed unexpectedly");
+            }
+          };
+
+          sourceNode = audioContext.createMediaStreamSource(audioStream);
+
+          // ScriptProcessorNode with 4096 buffer (~85ms at 48kHz)
+          scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+
+          scriptProcessor.onaudioprocess = (event) => {
+            if (!isCapturing) return;
+            const inputData = event.inputBuffer.getChannelData(0);
+            // Convert Float32Array to regular array for IPC serialization
+            const samples = Array.from(inputData);
+            window.captureAPI.sendAudioData(samples);
+          };
+
+          // Connect: source -> processor -> destination (required for processing to work)
+          sourceNode.connect(scriptProcessor);
+          scriptProcessor.connect(audioContext.destination);
+
+          isCapturing = true;
+
+          // Start stability timer — reset retry count after 30s of uninterrupted capture
+          stableTimer = setTimeout(() => {
+            if (isCapturing) {
+              console.log("[Capture] Stream stable for 30s, resetting retry count");
+              retryCount = 0;
+            }
+          }, STABLE_THRESHOLD_MS);
+
+          console.log("[Capture] Audio capture started successfully (PCM mode)");
+          window.captureAPI.notifyCaptureStarted();
+        } catch (error) {
+          console.error("[Capture] Failed to start capture:", error);
+
+          // If this was a restart attempt that failed, try again
+          if (retryCount > 0 && retryCount < MAX_RETRIES && !isUserStopped) {
+            const delay = BASE_RETRY_DELAY_MS * Math.pow(2, retryCount);
+            retryCount++;
+            console.log(
+              "[Capture] Restart failed, retrying " + retryCount + "/" + MAX_RETRIES + " in " + delay + "ms...",
+            );
+            window.captureAPI.notifyCaptureRestarting(retryCount, MAX_RETRIES);
+            setTimeout(() => {
+              if (!isUserStopped) startCapture();
+            }, delay);
+          } else {
+            window.captureAPI.notifyCaptureError(error.message || "Failed to start capture");
+          }
+        }
+      }
+
+      function stopCapture() {
+        console.log("[Capture] Stopping audio capture...");
+        isUserStopped = true; // prevent auto-restart
+        cleanupAudioResources();
+        retryCount = 0;
+        window.captureAPI.notifyCaptureStopped();
+      }
+
+      // Set up IPC listeners
+      window.captureAPI.onStartCapture(() => {
+        retryCount = 0; // fresh start
+        startCapture();
+      });
+
+      window.captureAPI.onStopCapture(() => {
+        stopCapture();
+      });
+
+      console.log("[Capture] Capture window initialized and ready (PCM mode)");
+    </script>
+  </body>
+</html>

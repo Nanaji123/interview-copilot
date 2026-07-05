@@ -5,12 +5,14 @@ type Props = {
   isSessionStarted: boolean;
   transcript: TranscriptMessage[];
   onManualQuestion?: (question: string) => void;
+  answerMode?: "auto" | "normal";
 };
 
 export default function TranscriptPanel({
   isSessionStarted,
   transcript,
   onManualQuestion,
+  answerMode = "normal",
 }: Props): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -111,7 +113,7 @@ export default function TranscriptPanel({
                     <div className="message-speaker">
                       {isUser ? "You" : "Interviewer"}
                     </div>
-                    {!isUser && onManualQuestion && (
+                    {!isUser && answerMode === "normal" && onManualQuestion && (
                       <button
                         className="answer-button"
                         onClick={() => onManualQuestion(content)}

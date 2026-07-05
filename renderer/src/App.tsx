@@ -8,6 +8,7 @@ import {
   TranscriptResult,
   AIAnswer,
   AIAnswerChunk,
+  TranscriptSkipped,
 } from "./lib/socketClient";
 import {
   createClient,
@@ -38,6 +39,7 @@ export default function App() {
     "idle" | "available" | "downloaded"
   >("idle");
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  const [answerMode, setAnswerMode] = useState<"auto" | "normal">("normal");
 
   // Audio Streams
   const [micAudioStream, setMicAudioStream] = useState<MediaStream | null>(
@@ -77,6 +79,24 @@ export default function App() {
         setSessionData(payload);
         setHasDeepLinkData(true);
       });
+    }
+
+    // Dev mode: poll the backend dev bridge for session data from the website
+    if (baseUrl?.includes("localhost")) {
+      const pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`${baseUrl}/dev/session`);
+          const json = await res.json();
+          if (json.available && json.data) {
+            console.log("[CoPrep Desktop] Received session data via dev bridge:", json.data);
+            setSessionData(json.data);
+            setHasDeepLinkData(true);
+          }
+        } catch {
+          // Backend might not be running yet, ignore
+        }
+      }, 3000);
+      return () => clearInterval(pollInterval);
     }
   }, []);
 
@@ -725,6 +745,11 @@ export default function App() {
         onError: (error) => {
           console.error("[CoPrep Desktop] Socket error:", error);
         },
+        onTranscriptSkipped: (data: TranscriptSkipped) => {
+          console.log(`[CoPrep Desktop] Transcript skipped (no response needed): "${data.text.substring(0, 60)}..."`);
+          // The transcript is already shown in the panel via Deepgram.
+          // No AI answer generated — user can click "Answer" to override.
+        },
       });
 
       await client.connect();
@@ -865,11 +890,20 @@ export default function App() {
 
   const handleManualQuestion = (question: string) => {
     if (socketClient && question.trim()) {
-      socketClient.sendManualQuestion(
+      // Use requestAnswer so it bypasses the intent classifier
+      socketClient.requestAnswer(
         question.trim(),
         getLanguageName(selectedLanguage)
       );
     }
+  };
+
+  const handleAnswerModeChange = (mode: "auto" | "normal") => {
+    setAnswerMode(mode);
+    if (socketClient) {
+      socketClient.setAnswerMode(mode);
+    }
+    console.log(`[CoPrep Desktop] Answer mode changed to: ${mode}`);
   };
 
   const handleAnalyzeScreen = useCallback(async () => {
@@ -1026,6 +1060,8 @@ export default function App() {
         onAnalyzeScreen={handleAnalyzeScreen}
         isMicEnabled={isMicEnabled}
         onToggleMic={handleToggleMic}
+        answerMode={answerMode}
+        onAnswerModeChange={handleAnswerModeChange}
       />
       {updateStatus !== "idle" && (
         <div className="update-banner">
@@ -1057,6 +1093,7 @@ export default function App() {
           isSessionStarted={isSessionStarted}
           transcript={transcript}
           onManualQuestion={handleManualQuestion}
+          answerMode={answerMode}
         />
       </div>
     </div>

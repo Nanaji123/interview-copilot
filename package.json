@@ -6,7 +6,7 @@
   "author": "CoPrep AI <support@coprep.ai> (https://www.coprep.ai)",
   "main": "dist/electron/main.js",
   "scripts": {
-    "dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 concurrently \"vite --config renderer/vite.config.ts\" \"tsc -p tsconfig.electron.json -w\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5555 concurrently \"vite --config renderer/vite.config.ts --port 5555\" \"tsc -p tsconfig.electron.json -w\" \"wait-on http://localhost:5555 && electron .\"",
     "start": "cross-env electron .",
     "build:renderer": "vite build --config renderer/vite.config.ts",
     "build:electron": "tsc -p tsconfig.electron.json",

@@ -196,6 +196,62 @@ body {
   cursor: not-allowed;
 }
 
+/* Mode Toggle (Auto/Smart) */
+.mode-toggle-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.mode-toggle-button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: hsl(0 0% 100% / 0.08);
+  border: 1px solid hsl(0 0% 100% / 0.15);
+  color: hsl(0 0% 100% / 0.85);
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: default;
+  transition: all 0.25s ease;
+  -webkit-app-region: no-drag;
+  white-space: nowrap;
+}
+
+.mode-toggle-button:hover {
+  background-color: hsl(0 0% 100% / 0.14);
+  border-color: hsl(0 0% 100% / 0.25);
+}
+
+.mode-toggle-button.active {
+  background-color: hsl(45 93% 47% / 0.15);
+  border-color: hsl(45 93% 47% / 0.4);
+  color: hsl(45 93% 70%);
+}
+
+.mode-toggle-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.mode-toggle-indicator.normal {
+  background-color: hsl(142 70% 50%);
+  box-shadow: 0 0 4px hsl(142 70% 50% / 0.5);
+}
+
+.mode-toggle-indicator.auto {
+  background-color: hsl(45 93% 55%);
+  box-shadow: 0 0 4px hsl(45 93% 55% / 0.5);
+}
+
+.mode-toggle-label {
+  line-height: 1;
+}
+
 .mic-button {
   background-color: transparent;
   border: 1px solid #1877f2;

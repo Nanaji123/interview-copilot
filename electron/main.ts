@@ -894,7 +894,14 @@ app.whenReady().then(async () => {
   }
 
   try {
-    app.setAsDefaultProtocolClient(PROTOCOL);
+    if (!app.isPackaged) {
+      // In dev mode, register protocol with the path to electron binary + project dir
+      app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [
+        path.resolve(process.cwd()),
+      ]);
+    } else {
+      app.setAsDefaultProtocolClient(PROTOCOL);
+    }
   } catch { }
 
   // Register all IPC handlers

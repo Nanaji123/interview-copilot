@@ -20,6 +20,8 @@ type Props = {
   onAnalyzeScreen?: () => void;
   isMicEnabled?: boolean;
   onToggleMic?: () => void;
+  answerMode?: "auto" | "normal";
+  onAnswerModeChange?: (mode: "auto" | "normal") => void;
 };
 
 declare global {
@@ -66,6 +68,8 @@ export default function Header({
   onAnalyzeScreen,
   isMicEnabled = true,
   onToggleMic,
+  answerMode = "normal",
+  onAnswerModeChange,
 }: Props): JSX.Element {
   const [hasScreenPermission, setHasScreenPermission] = useState<
     boolean | null
@@ -187,6 +191,18 @@ export default function Header({
           <button onClick={onAnalyzeScreen} className="analyze-button">
             Analyze Screen
           </button>
+          <div className="mode-toggle-wrapper">
+            <button
+              className={`mode-toggle-button ${answerMode === "auto" ? "active" : ""}`}
+              onClick={() => onAnswerModeChange?.(answerMode === "auto" ? "normal" : "auto")}
+              title={answerMode === "auto" ? "Auto Mode: Answering everything" : "Normal Mode: Smart filtering active"}
+            >
+              <span className={`mode-toggle-indicator ${answerMode === "auto" ? "auto" : "normal"}`} />
+              <span className="mode-toggle-label">
+                {answerMode === "auto" ? "Auto" : "Smart"}
+              </span>
+            </button>
+          </div>
           <button onClick={onEnd} className="end-button">
             End
           </button>

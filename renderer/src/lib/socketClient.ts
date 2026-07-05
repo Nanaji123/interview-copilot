@@ -28,6 +28,12 @@ export interface AIAnswerStart {
   timestamp: string;
 }
 
+export interface TranscriptSkipped {
+  sessionId: string;
+  text: string;
+  timestamp: string;
+}
+
 export interface SocketClientOptions {
   baseUrl: string;
   sessionId: string;
@@ -43,6 +49,7 @@ export interface SocketClientOptions {
   onStreamStatus?: (status: any) => void;
   onReconnectionAttempt?: (attempt: number, maxAttempts: number) => void;
   onReconnectionSuccess?: () => void;
+  onTranscriptSkipped?: (event: TranscriptSkipped) => void;
   onError?: (err: any) => void;
 }
 
@@ -131,6 +138,10 @@ export class InterviewSocketClient {
     this.socket.on("disconnect", () => {
       // console.log("🔌 Disconnected from interview namespace");
     });
+
+    this.socket.on("transcript_skipped", (data: TranscriptSkipped) => {
+      this.opts.onTranscriptSkipped?.(data);
+    });
   }
 
   sendTranscript(text: string, isFinal: boolean, language?: string) {
@@ -167,6 +178,23 @@ export class InterviewSocketClient {
       sessionId: this.opts.sessionId,
       mimeType: blob.type || "image/png",
       uint8Array, // binary payload as second argument
+    });
+  }
+
+  setAnswerMode(mode: "auto" | "normal") {
+    if (!this.socket) return;
+    this.socket.emit("set_answer_mode", {
+      sessionId: this.opts.sessionId,
+      mode,
+    });
+  }
+
+  requestAnswer(text: string, language?: string) {
+    if (!this.socket) return;
+    this.socket.emit("request_answer", {
+      sessionId: this.opts.sessionId,
+      text,
+      language,
     });
   }
 

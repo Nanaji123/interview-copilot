@@ -2,7 +2,7 @@
   "appId": "com.coprep.desktop",
   "productName": "CoPrep-AI",
   "artifactName": "CoPrepAI-Setup-${arch}.${ext}",
-  "copyright": "Copyright © 2024 CoPrep AI Team",
+  "copyright": "Copyright © 2026 PathMaker4u",
   "directories": {
     "output": "release",
     "buildResources": "assets"
@@ -17,8 +17,9 @@
   },
   "protocols": [
     {
-      "name": "CoPrep Protocol",
+      "name": "PathMaker4u Protocol",
       "schemes": [
+        "pathmaker4u",
         "coprep"
       ]
     }
@@ -35,9 +36,9 @@
       "LSUIElement": true,
       "LSBackgroundOnly": false,
       "NSSupportsAutomaticTermination": false,
-      "NSMicrophoneUsageDescription": "CoPrep AI uses your microphone to transcribe your interview answers when you unmute the mic.",
-      "NSAudioCaptureUsageDescription": "CoPrep AI captures system audio so interviewer questions can be transcribed during an interview session.",
-      "NSCameraUsageDescription": "CoPrep AI uses screen capture only when you ask it to analyze your screen."
+      "NSMicrophoneUsageDescription": "PathMaker4u uses your microphone to transcribe your interview answers when you unmute the mic.",
+      "NSAudioCaptureUsageDescription": "PathMaker4u captures system audio so interviewer questions can be transcribed during an interview session.",
+      "NSCameraUsageDescription": "PathMaker4u uses screen capture only when you ask it to analyze your screen."
     },
     "target": [
       {
@@ -60,7 +61,7 @@
   "dmg": {
     "icon": "assets/logo.icns",
     "background": "assets/dmg-background.png",
-    "title": "CoPrepAI-Installer-${arch}",
+    "title": "PathMaker4u-Installer-${arch}",
     "window": {
       "width": 540,
       "height": 380
@@ -81,7 +82,7 @@
   },
   "win": {
     "icon": "assets/logo.ico",
-    "legalTrademarks": "CoPrep AI",
+    "legalTrademarks": "PathMaker4u",
     "target": [
       {
         "target": "nsis",
@@ -104,7 +105,7 @@
     "installerHeader": "assets/logo.ico",
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "CoPrep AI"
+    "shortcutName": "PathMaker4u"
   },
   "linux": {
     "icon": "assets/logo.png",
@@ -119,7 +120,7 @@
       }
     ],
     "maintainer": "CoPrep AI <support@coprep.ai>",
-    "vendor": "CoPrep AI",
+    "vendor": "PathMaker4u",
     "synopsis": "AI-powered interview preparation",
     "description": "AI-powered interview preparation desktop application"
   },

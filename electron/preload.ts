@@ -16,7 +16,7 @@ function isValidUrl(url: string): boolean {
 }
 
 // Security: Only expose necessary APIs
-contextBridge.exposeInMainWorld("coprep", {
+contextBridge.exposeInMainWorld("pathmaker4u", {
   // Version and app info
   getVersion: () => ipcRenderer.invoke("app:get-version"),
 
@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld("coprep", {
     if (typeof url === "string" && isValidUrl(url)) {
       ipcRenderer.send("open-external", url);
     } else {
-      console.warn("[CoPrep] Blocked external URL:", url);
+      console.warn("[PathMaker4u] Blocked external URL:", url);
     }
   },
 

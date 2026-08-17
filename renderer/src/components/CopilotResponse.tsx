@@ -3,14 +3,55 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { AIAnswer } from "../lib/socketClient";
+import { AIAnswer, AnswerSource } from "../lib/socketClient";
 
 type Props = {
   isSessionStarted: boolean;
   answers: AIAnswer[];
   currentStreamingAnswer?: string;
+  /** Question the in-flight answer is responding to */
+  currentQuestion?: string;
+  currentSource?: AnswerSource;
   onSubmitQuestion?: (question: string) => void;
 };
+
+/** Human label for where a question came from. */
+const SOURCE_LABEL: Record<AnswerSource, string> = {
+  transcript: "Heard",
+  manual: "You asked",
+  screen: "Screen",
+};
+
+/**
+ * Renders the question an answer responds to.
+ *
+ * Screen captures have no spoken question — the server sends a
+ * "[Screenshot Analysis]" placeholder, which we replace with a readable label
+ * rather than showing the raw marker.
+ */
+function QuestionLabel({
+  question,
+  source,
+}: {
+  question?: string;
+  source?: AnswerSource;
+}): JSX.Element | null {
+  const kind: AnswerSource = source ?? "transcript";
+  const isScreen = kind === "screen" || question === "[Screenshot Analysis]";
+
+  // Older answers (saved before questions were sent over the socket) have no
+  // question — render nothing rather than an empty label.
+  if (!isScreen && !question?.trim()) return null;
+
+  return (
+    <div className={`answer-question answer-question--${kind}`}>
+      <span className="answer-question-tag">{SOURCE_LABEL[kind]}</span>
+      <span className="answer-question-text">
+        {isScreen ? "Analysis of your screen" : question}
+      </span>
+    </div>
+  );
+}
 
 type CodeBlockProps = {
   language: string;
@@ -23,15 +64,15 @@ function CodeBlock({ language, children }: CodeBlockProps) {
 
   const handleCopy = async () => {
     try {
-      if (window.coprep?.copyTextToClipboard) {
-        window.coprep.copyTextToClipboard(code);
+      if (window.pathmaker4u?.copyTextToClipboard) {
+        window.pathmaker4u.copyTextToClipboard(code);
       } else {
         await navigator.clipboard.writeText(code);
       }
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch (error) {
-      console.error("[CoPrep Desktop] Failed to copy code block", error);
+      console.error("[PathMaker4u] Failed to copy code block", error);
     }
   };
 
@@ -184,6 +225,8 @@ export default function CopilotResponse({
   isSessionStarted,
   answers,
   currentStreamingAnswer,
+  currentQuestion,
+  currentSource,
   onSubmitQuestion,
 }: Props): JSX.Element {
   const [manualQuestion, setManualQuestion] = useState("");
@@ -214,7 +257,13 @@ export default function CopilotResponse({
     }
   };
 
-  if (ordered.length === 0 && !currentStreamingAnswer) return <></>;
+  // Stay mounted for the whole session. This used to bail out whenever there
+  // were no answers yet, which also removed the "Type your question" box — so
+  // the one control you need at the START of a session was the one thing you
+  // couldn't reach until an answer had already arrived.
+  if (!isSessionStarted && ordered.length === 0 && !currentStreamingAnswer) {
+    return <></>;
+  }
 
   return (
     <div className="copilot-response">
@@ -249,6 +298,7 @@ export default function CopilotResponse({
                   <span>Generating Answer</span>
                   <span className="pulse-dot" />
                 </div>
+                <QuestionLabel question={currentQuestion} source={currentSource} />
                 <div className="answer-streaming-body">
                   <div className="answer-markdown prose prose-invert max-w-none prose-sm">
                     <ReactMarkdown
@@ -264,6 +314,7 @@ export default function CopilotResponse({
             )}
             {ordered.map((a, idx) => (
               <div key={a.timestamp + idx} className="copilot-content">
+                <QuestionLabel question={a.question} source={a.source} />
                 <div className="answer-item-text">
                   <MemoizedAnswerContent answer={cleanMarkdown(a.answer)} />
                 </div>

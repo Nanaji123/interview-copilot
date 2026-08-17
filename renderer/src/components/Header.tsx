@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import logoImage from "../assets/logo.png";
 import { DEEPGRAM_LANGUAGES, DeepgramLanguage } from "../lib/deepgramLanguages";
+import SessionTimer from "./SessionTimer";
 
 interface SessionData {
   userId?: string;
@@ -16,6 +17,9 @@ type Props = {
   selectedLanguage?: string;
   onLanguageChange?: (language: string) => void;
   isSessionStarted?: boolean;
+  /** Session start (ms since epoch) — drives the live elapsed-time readout. */
+  sessionStartedAt?: number | null;
+  creditBalance?: number | null;
   onEnd?: () => void;
   onAnalyzeScreen?: () => void;
   isMicEnabled?: boolean;
@@ -26,7 +30,7 @@ type Props = {
 
 declare global {
   interface Window {
-    coprep: {
+    pathmaker4u: {
       checkScreenPermission: () => Promise<boolean>;
       requestScreenPermission: () => Promise<boolean>;
       openExternal: (url: string) => void;
@@ -64,6 +68,8 @@ export default function Header({
   selectedLanguage = "en",
   onLanguageChange,
   isSessionStarted = false,
+  sessionStartedAt = null,
+  creditBalance = null,
   onEnd,
   onAnalyzeScreen,
   isMicEnabled = true,
@@ -87,11 +93,11 @@ export default function Header({
 
   useEffect(() => {
     // Check initial screen permission status
-    if (window.coprep) {
-      window.coprep.checkScreenPermission().then(setHasScreenPermission);
+    if (window.pathmaker4u) {
+      window.pathmaker4u.checkScreenPermission().then(setHasScreenPermission);
 
       // Listen for permission status updates
-      window.coprep.onScreenPermissionStatus(setHasScreenPermission);
+      window.pathmaker4u.onScreenPermissionStatus(setHasScreenPermission);
     }
   }, []);
 
@@ -104,11 +110,11 @@ export default function Header({
   }, [bgOpacity]);
 
   const handleRequestScreenAccess = async () => {
-    if (!window.coprep) return;
+    if (!window.pathmaker4u) return;
 
     setIsRequestingPermission(true);
     try {
-      const granted = await window.coprep.requestScreenPermission();
+      const granted = await window.pathmaker4u.requestScreenPermission();
       setHasScreenPermission(granted);
     } catch (error) {
       console.error("Failed to request screen permission:", error);
@@ -223,10 +229,23 @@ export default function Header({
     <header className="header">
       <div className="header-container">
         <div className="header-left">
-          <img src={logoImage} alt="CoPrep" className="logo" />
-          <span className="app-title whitespace-nowrap">VodKa AI</span>
+          <img src={logoImage} alt="PathMaker4u" className="logo" />
+          <span className="app-title whitespace-nowrap">PathMaker4u</span>
         </div>
         <div className="header-right">
+          {isSessionStarted && sessionStartedAt && (
+            <>
+              <SessionTimer startedAt={sessionStartedAt} />
+              {creditBalance !== null && (
+                <span
+                  className={`header-credits ${creditBalance <= 5 ? "low" : ""}`}
+                  title="Credits remaining (1 credit = 1 minute)"
+                >
+                  {creditBalance} min left
+                </span>
+              )}
+            </>
+          )}
           {hasDeepLinkData && !isSessionStarted && (
             <select
               value={selectedLanguage}
@@ -242,7 +261,7 @@ export default function Header({
           )}
           {renderButton()}
           <button
-            onClick={() => window.coprep?.quitApp?.()}
+            onClick={() => window.pathmaker4u?.quitApp?.()}
             title="Close App"
             style={{
               background: "#e51515ff",

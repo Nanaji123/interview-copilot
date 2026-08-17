@@ -15,7 +15,46 @@ import { applyContentProtection } from "./windowProtection";
 
 let win: BrowserWindow | null = null;
 let captureWin: BrowserWindow | null = null;
-const PROTOCOL = "coprep";
+/**
+ * Deep-link schemes, in priority order.
+ *
+ * `coprep` is the pre-rename scheme and is still accepted: protocol handlers are
+ * registered by the OS at install time, so any copy of the app installed before
+ * the rename — and any web build still emitting coprep:// links — would break if
+ * we dropped it. Keep both until every client has been updated.
+ */
+const PROTOCOLS = ["pathmaker4u", "coprep"] as const;
+const PROTOCOL = PROTOCOLS[0];
+
+/** Does this string look like one of our deep links? */
+function isDeepLink(value: string): boolean {
+  return PROTOCOLS.some((scheme) => value.startsWith(`${scheme}://`));
+}
+
+/**
+ * The main window, but only if it's safe to touch.
+ *
+ * `win` is set to null on "closed", but there is a window of time where the
+ * object still exists and has already been destroyed. Calling anything on it
+ * then — isVisible(), webContents.send() — throws "Object has been destroyed",
+ * which surfaces as the "A JavaScript error occurred in the main process"
+ * dialog. Always go through this instead of using `win` directly.
+ */
+function liveWindow(): BrowserWindow | null {
+  if (!win || win.isDestroyed()) return null;
+  return win;
+}
+
+/** Send an IPC message to the renderer, silently skipping a dead window. */
+function sendToRenderer(channel: string, ...args: unknown[]): void {
+  const target = liveWindow();
+  if (!target) return;
+  try {
+    target.webContents.send(channel, ...args);
+  } catch (err) {
+    console.warn(`[PathMaker4u] Could not send "${channel}" to renderer:`, err);
+  }
+}
 
 const EVENTS = {
   SESSION_START: "session:start",
@@ -34,12 +73,12 @@ function checkScreenSharingPermissionStatus(): boolean {
     const hasPermission =
       systemPreferences.getMediaAccessStatus("screen") === "granted";
     console.log(
-      "[CoPrep] Screen sharing permission status:",
+      "[PathMaker4u] Screen sharing permission status:",
       hasPermission ? "granted" : "not granted",
     );
     return hasPermission;
   } catch (error) {
-    console.error("[CoPrep] Error checking screen sharing permission:", error);
+    console.error("[PathMaker4u] Error checking screen sharing permission:", error);
     return false;
   }
 }
@@ -56,12 +95,12 @@ async function checkAndRequestScreenSharingPermission(): Promise<boolean> {
       systemPreferences.getMediaAccessStatus("screen") === "granted";
 
     if (hasPermission) {
-      console.log("[CoPrep] Screen sharing permission already granted");
+      console.log("[PathMaker4u] Screen sharing permission already granted");
       return true;
     }
 
     console.log(
-      "[CoPrep] Screen sharing permission not granted, requesting...",
+      "[PathMaker4u] Screen sharing permission not granted, requesting...",
     );
 
     // On macOS, screen recording permission is cached at process launch.
@@ -80,7 +119,7 @@ async function checkAndRequestScreenSharingPermission(): Promise<boolean> {
       });
     } catch (triggerError) {
       console.log(
-        "[CoPrep] desktopCapturer.getSources() threw (expected when permission not yet granted):",
+        "[PathMaker4u] desktopCapturer.getSources() threw (expected when permission not yet granted):",
         triggerError,
       );
     }
@@ -90,7 +129,7 @@ async function checkAndRequestScreenSharingPermission(): Promise<boolean> {
       systemPreferences.getMediaAccessStatus("screen");
 
     if (permissionAfterAttempt === "granted") {
-      console.log("[CoPrep] Screen sharing permission granted");
+      console.log("[PathMaker4u] Screen sharing permission granted");
       return true;
     }
 
@@ -98,7 +137,7 @@ async function checkAndRequestScreenSharingPermission(): Promise<boolean> {
     // or they have but macOS requires an app restart for it to take effect.
     // Open System Settings to the Screen Recording pane so the user can act.
     console.log(
-      "[CoPrep] Opening System Settings > Screen Recording for user...",
+      "[PathMaker4u] Opening System Settings > Screen Recording for user...",
     );
     shell.openExternal(
       "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
@@ -112,10 +151,10 @@ async function checkAndRequestScreenSharingPermission(): Promise<boolean> {
       type: "info",
       title: "Screen Recording Permission Required",
       message:
-        "CoPrep needs Screen Recording permission to capture your screen.\n\n" +
-        "1. In the System Settings window that just opened, find \"CoPrep\" (or \"Electron\") and toggle it ON.\n" +
+        "PathMaker4u needs Screen Recording permission to capture your screen.\n\n" +
+        "1. In the System Settings window that just opened, find \"PathMaker4u\" (or \"Electron\") and toggle it ON.\n" +
         "2. macOS requires you to restart the app after granting this permission.\n\n" +
-        "Click \"Restart Now\" to restart CoPrep, or \"Later\" to continue without screen capture.",
+        "Click \"Restart Now\" to restart PathMaker4u, or \"Later\" to continue without screen capture.",
       buttons: ["Restart Now", "Later"],
       defaultId: 0,
       cancelId: 1,
@@ -123,15 +162,15 @@ async function checkAndRequestScreenSharingPermission(): Promise<boolean> {
 
     if (response === 0) {
       // Restart the app so the new permission takes effect
-      console.log("[CoPrep] User chose to restart for screen permission");
+      console.log("[PathMaker4u] User chose to restart for screen permission");
       app.relaunch();
       app.exit(0);
     }
 
-    console.log("[CoPrep] Screen sharing permission not yet effective (needs restart)");
+    console.log("[PathMaker4u] Screen sharing permission not yet effective (needs restart)");
     return false;
   } catch (error) {
-    console.error("[CoPrep] Error checking screen sharing permission:", error);
+    console.error("[PathMaker4u] Error checking screen sharing permission:", error);
     return false;
   }
 }
@@ -145,14 +184,14 @@ function createCaptureWindow() {
   // Guard: ensure app is ready before creating windows
   if (!app.isReady()) {
     console.warn(
-      "[CoPrep] createCaptureWindow called before app is ready, deferring...",
+      "[PathMaker4u] createCaptureWindow called before app is ready, deferring...",
     );
     app.whenReady().then(() => createCaptureWindow());
     return;
   }
 
   if (captureWin) {
-    console.log("[CoPrep] Capture window already exists");
+    console.log("[PathMaker4u] Capture window already exists");
     return;
   }
 
@@ -234,7 +273,7 @@ function createCaptureWindow() {
     "renderer",
     "capture.html",
   );
-  console.log("[CoPrep] Loading capture.html from:", captureHtmlPath);
+  console.log("[PathMaker4u] Loading capture.html from:", captureHtmlPath);
 
   // Forward console messages from capture window to main process
   captureWin.webContents.on(
@@ -255,7 +294,7 @@ function createCaptureWindow() {
     "did-fail-load",
     (_event, errorCode, errorDesc, validatedURL) => {
       console.error(
-        "[CoPrep] Capture window failed to load:",
+        "[PathMaker4u] Capture window failed to load:",
         errorCode,
         errorDesc,
         validatedURL,
@@ -269,14 +308,14 @@ function createCaptureWindow() {
     captureWin = null;
   });
 
-  console.log("[CoPrep] Capture window created");
+  console.log("[PathMaker4u] Capture window created");
 }
 
 function createWindow() {
   // Guard: screen module can only be used after app is ready
   if (!app.isReady()) {
     console.warn(
-      "[CoPrep] createWindow called before app is ready, deferring...",
+      "[PathMaker4u] createWindow called before app is ready, deferring...",
     );
     app.whenReady().then(() => createWindow());
     return;
@@ -485,7 +524,7 @@ function createWindow() {
 function handleDeepLink(rawUrl: string) {
   try {
     const u = new URL(rawUrl);
-    if (u.protocol !== `${PROTOCOL}:`) return;
+    if (!PROTOCOLS.some((scheme) => u.protocol === `${scheme}:`)) return;
     const isStart =
       u.host === "start" || u.pathname.replace(/^\/+/, "") === "start";
     if (!isStart) return;
@@ -510,7 +549,7 @@ function handleDeepLink(rawUrl: string) {
     }
 
     // Log received deep link data to the main process console
-    console.log("[CoPrep] Deep link received:", {
+    console.log("[PathMaker4u] Deep link received:", {
       userId,
       token: token ? `${token.slice(0, 6)}…` : undefined,
       credits: credits,
@@ -581,14 +620,15 @@ function registerShortcuts() {
   });
   // Analyze the screen during an active session
   globalShortcut.register("CommandOrControl+Shift+A", () => {
-    if (!win) {
+    const target = liveWindow();
+    if (!target) {
       createWindow();
       return;
     }
-    if (!win.isVisible()) {
-      win.show();
+    if (!target.isVisible()) {
+      target.show();
     }
-    win.webContents.send(EVENTS.ANALYZE_SCREEN_SHORTCUT);
+    sendToRenderer(EVENTS.ANALYZE_SCREEN_SHORTCUT);
   });
   // Move left/right/up/down
   globalShortcut.register("Alt+Left", () => moveWindow(-20, 0));
@@ -631,9 +671,7 @@ function registerIpcHandlers() {
   ipcMain.handle("request-screen-permission", async () => {
     const result = await checkAndRequestScreenSharingPermission();
     // Send updated permission status to renderer
-    if (win) {
-      win.webContents.send(EVENTS.SCREEN_PERMISSION_STATUS, result);
-    }
+    sendToRenderer(EVENTS.SCREEN_PERMISSION_STATUS, result);
     return result;
   });
 
@@ -691,11 +729,11 @@ function registerIpcHandlers() {
 
   // IPC: Start audio capture via hidden capture window
   ipcMain.handle("audio:start-capture", async () => {
-    console.log("[CoPrep] audio:start-capture IPC received");
+    console.log("[PathMaker4u] audio:start-capture IPC received");
 
     try {
       if (!captureWin) {
-        console.log("[CoPrep] Creating capture window...");
+        console.log("[PathMaker4u] Creating capture window...");
         createCaptureWindow();
 
         // Wait for capture window to be created and load
@@ -708,7 +746,7 @@ function registerIpcHandlers() {
             if (captureWin) {
               captureWin.webContents.once("did-finish-load", () => {
                 clearTimeout(timeout);
-                console.log("[CoPrep] Capture window loaded");
+                console.log("[PathMaker4u] Capture window loaded");
                 resolve();
               });
 
@@ -717,7 +755,7 @@ function registerIpcHandlers() {
                 (_event, errorCode, errorDesc) => {
                   clearTimeout(timeout);
                   console.error(
-                    "[CoPrep] Capture window failed to load:",
+                    "[PathMaker4u] Capture window failed to load:",
                     errorCode,
                     errorDesc,
                   );
@@ -734,22 +772,22 @@ function registerIpcHandlers() {
       }
 
       if (captureWin) {
-        console.log("[CoPrep] Sending start-capture to capture window");
+        console.log("[PathMaker4u] Sending start-capture to capture window");
         captureWin.webContents.send("audio:start-capture");
         return true;
       } else {
-        console.error("[CoPrep] Capture window not available after creation");
+        console.error("[PathMaker4u] Capture window not available after creation");
         return false;
       }
     } catch (error) {
-      console.error("[CoPrep] Failed to start audio capture:", error);
+      console.error("[PathMaker4u] Failed to start audio capture:", error);
       return false;
     }
   });
 
   // IPC: Stop audio capture
   ipcMain.handle("audio:stop-capture", async () => {
-    console.log("[CoPrep] Stopping audio capture...");
+    console.log("[PathMaker4u] Stopping audio capture...");
     if (captureWin) {
       captureWin.webContents.send("audio:stop-capture");
     }
@@ -759,23 +797,23 @@ function registerIpcHandlers() {
   // IPC: Relay audio data from capture window to main window
   ipcMain.on("audio:data", (_event, data: ArrayBuffer) => {
     if (win) {
-      win.webContents.send("audio:data-to-renderer", data);
+      sendToRenderer("audio:data-to-renderer", data);
     }
   });
 
   // IPC: Relay capture started event
   ipcMain.on("audio:capture-started", () => {
-    console.log("[CoPrep] Audio capture started");
+    console.log("[PathMaker4u] Audio capture started");
     if (win) {
-      win.webContents.send("audio:capture-started");
+      sendToRenderer("audio:capture-started");
     }
   });
 
   // IPC: Relay capture stopped event
   ipcMain.on("audio:capture-stopped", () => {
-    console.log("[CoPrep] Audio capture stopped");
+    console.log("[PathMaker4u] Audio capture stopped");
     if (win) {
-      win.webContents.send("audio:capture-stopped");
+      sendToRenderer("audio:capture-stopped");
     }
     // Destroy capture window so a fresh one is created on next capture start
     if (captureWin) {
@@ -789,19 +827,19 @@ function registerIpcHandlers() {
     "audio:capture-restarting",
     (_event, attempt: number, maxRetries: number) => {
       console.log(
-        `[CoPrep] Audio capture restarting (attempt ${attempt}/${maxRetries})...`,
+        `[PathMaker4u] Audio capture restarting (attempt ${attempt}/${maxRetries})...`,
       );
       if (win) {
-        win.webContents.send("audio:capture-restarting", attempt, maxRetries);
+        sendToRenderer("audio:capture-restarting", attempt, maxRetries);
       }
     },
   );
 
   // IPC: Relay capture error event
   ipcMain.on("audio:capture-error", (_event, error: string) => {
-    console.error("[CoPrep] Audio capture error:", error);
+    console.error("[PathMaker4u] Audio capture error:", error);
     if (win) {
-      win.webContents.send("audio:capture-error", error);
+      sendToRenderer("audio:capture-error", error);
     }
   });
 }
@@ -809,10 +847,16 @@ function registerIpcHandlers() {
 // Ensure single instance to funnel deep links
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-  app.quit();
+  if (app.isPackaged) {
+    app.quit();
+  } else {
+    console.warn(
+      "[PathMaker4u Dev] Single instance lock not acquired (likely stale lock file). Continuing dev session...",
+    );
+  }
 } else {
   app.on("second-instance", (_e, argv) => {
-    const linkArg = argv.find((a) => a.startsWith?.(`${PROTOCOL}://`));
+    const linkArg = argv.find((a) => typeof a === "string" && isDeepLink(a));
     if (linkArg) handleDeepLink(linkArg);
     if (win) {
       win.show();
@@ -837,7 +881,7 @@ if (process.platform === "darwin") {
   );
 }
 
-app.setName("CoPrep AI");
+app.setName("PathMaker4u");
 // Rename the process title shown in Activity Monitor / Task Manager
 // to something generic so it is less conspicuous.
 process.title = "System Audio Host";
@@ -912,7 +956,7 @@ app.whenReady().then(async () => {
   registerShortcuts();
 
   // Dev convenience: if URL passed as argv
-  const argUrl = process.argv.find((a) => a.startsWith?.(`${PROTOCOL}://`));
+  const argUrl = process.argv.find((a) => typeof a === "string" && isDeepLink(a));
   if (argUrl) handleDeepLink(argUrl);
 });
 

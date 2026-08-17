@@ -48,17 +48,17 @@ export function applyContentProtection(win: BrowserWindow): void {
 
       if (result) {
         console.log(
-          "[CoPrep] Window protection applied via WDA_EXCLUDEFROMCAPTURE (fully invisible from capture)",
+          "[PathMaker4u] Window protection applied via WDA_EXCLUDEFROMCAPTURE (fully invisible from capture)",
         );
       } else {
         console.warn(
-          "[CoPrep] SetWindowDisplayAffinity failed, falling back to Electron's setContentProtection",
+          "[PathMaker4u] SetWindowDisplayAffinity failed, falling back to Electron's setContentProtection",
         );
         win.setContentProtection(true);
       }
     } catch (error) {
       console.error(
-        "[CoPrep] Failed to apply native content protection, falling back to Electron:",
+        "[PathMaker4u] Failed to apply native content protection, falling back to Electron:",
         error,
       );
       win.setContentProtection(true);

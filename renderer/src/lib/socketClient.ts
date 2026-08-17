@@ -11,8 +11,14 @@ export interface TranscriptResult {
   is_final: boolean; // Deepgram final vs interim
 }
 
+/** Where an answer was triggered from — drives how it's labelled in the UI. */
+export type AnswerSource = "transcript" | "manual" | "screen";
+
 export interface AIAnswer {
   sessionId: string;
+  /** The question this answer responds to */
+  question?: string;
+  source?: AnswerSource;
   answer: string;
   timestamp: string;
 }
@@ -25,6 +31,9 @@ export interface AIAnswerChunk {
 
 export interface AIAnswerStart {
   sessionId: string;
+  /** Shown above the answer while it streams in */
+  question?: string;
+  source?: AnswerSource;
   timestamp: string;
 }
 
@@ -32,6 +41,31 @@ export interface TranscriptSkipped {
   sessionId: string;
   text: string;
   timestamp: string;
+}
+
+/** Emitted each metered minute with the user's remaining credit balance. */
+export interface CreditsUpdate {
+  sessionId: string;
+  balance: number;
+}
+
+/** Emitted when the balance crosses a low threshold (5, 2, 1 credits). */
+export interface CreditsWarning {
+  sessionId: string;
+  balance: number;
+  message: string;
+}
+
+/**
+ * Emitted when the server ends the session on its own — currently only when
+ * credits run out. The session is already ended server-side, so the client
+ * must tear down locally and must NOT call /end again.
+ */
+export interface SessionTerminated {
+  sessionId: string;
+  reason: "INSUFFICIENT_CREDITS" | string;
+  message: string;
+  balance: number;
 }
 
 export interface SocketClientOptions {
@@ -50,6 +84,9 @@ export interface SocketClientOptions {
   onReconnectionAttempt?: (attempt: number, maxAttempts: number) => void;
   onReconnectionSuccess?: () => void;
   onTranscriptSkipped?: (event: TranscriptSkipped) => void;
+  onCreditsUpdate?: (event: CreditsUpdate) => void;
+  onCreditsWarning?: (event: CreditsWarning) => void;
+  onSessionTerminated?: (event: SessionTerminated) => void;
   onError?: (err: any) => void;
 }
 
@@ -141,6 +178,21 @@ export class InterviewSocketClient {
 
     this.socket.on("transcript_skipped", (data: TranscriptSkipped) => {
       this.opts.onTranscriptSkipped?.(data);
+    });
+
+    // ─── Credit metering ─────────────────────────────────────────
+    this.socket.on("credits_update", (data: CreditsUpdate) => {
+      this.opts.onCreditsUpdate?.(data);
+    });
+
+    this.socket.on("credits_warning", (data: CreditsWarning) => {
+      console.warn(`[PathMaker4u] ${data.message}`);
+      this.opts.onCreditsWarning?.(data);
+    });
+
+    this.socket.on("session_terminated", (data: SessionTerminated) => {
+      console.warn(`[PathMaker4u] Session terminated: ${data.reason}`);
+      this.opts.onSessionTerminated?.(data);
     });
   }
 

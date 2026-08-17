@@ -8,7 +8,12 @@ import {
   TranscriptResult,
   AIAnswer,
   AIAnswerChunk,
+  AIAnswerStart,
   TranscriptSkipped,
+  CreditsUpdate,
+  CreditsWarning,
+  SessionTerminated,
+  AnswerSource,
 } from "./lib/socketClient";
 import {
   createClient,
@@ -35,6 +40,20 @@ export default function App() {
   const [socketClient, setSocketClient] =
     useState<InterviewSocketClient | null>(null);
   const [currentStreamingAnswer, setCurrentStreamingAnswer] = useState("");
+  /** Question the in-flight answer is responding to, shown while it streams. */
+  const [currentQuestion, setCurrentQuestion] = useState<string | undefined>();
+  const [currentSource, setCurrentSource] = useState<AnswerSource | undefined>();
+  /** Remaining credits (1 credit = 1 min), pushed by the server each metered minute. */
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  /**
+   * When the billed session actually began (ms since epoch).
+   *
+   * Taken from the server's `started_at` rather than the local click time, so
+   * the timer shown here is the same clock that decides what you're charged.
+   */
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  /** Non-blocking low-credit message shown above the transcript. */
+  const [creditNotice, setCreditNotice] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<
     "idle" | "available" | "downloaded"
   >("idle");
@@ -73,9 +92,9 @@ export default function App() {
 
   useEffect(() => {
     // Listen for session data from deep links
-    if (window.coprep?.onSessionStart) {
-      window.coprep.onSessionStart((payload: SessionData) => {
-        console.log("[CoPrep Desktop] Received session data:", payload);
+    if (window.pathmaker4u?.onSessionStart) {
+      window.pathmaker4u.onSessionStart((payload: SessionData) => {
+        console.log("[PathMaker4u] Received session data:", payload);
         setSessionData(payload);
         setHasDeepLinkData(true);
       });
@@ -88,7 +107,7 @@ export default function App() {
           const res = await fetch(`${baseUrl}/dev/session`);
           const json = await res.json();
           if (json.available && json.data) {
-            console.log("[CoPrep Desktop] Received session data via dev bridge:", json.data);
+            console.log("[PathMaker4u] Received session data via dev bridge:", json.data);
             setSessionData(json.data);
             setHasDeepLinkData(true);
           }
@@ -101,20 +120,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!window.coprep) return;
+    if (!window.pathmaker4u) return;
 
-    const cleanupUpdateAvailable = window.coprep.onUpdateAvailable?.(() => {
+    const cleanupUpdateAvailable = window.pathmaker4u.onUpdateAvailable?.(() => {
       setUpdateStatus("available");
       setUpdateProgress(0);
     });
-    const cleanupUpdateProgress = window.coprep.onUpdateProgress?.(
+    const cleanupUpdateProgress = window.pathmaker4u.onUpdateProgress?.(
       (progress: { percent?: number }) => {
         if (typeof progress?.percent === "number") {
           setUpdateProgress(Math.round(progress.percent));
         }
       },
     );
-    const cleanupUpdateDownloaded = window.coprep.onUpdateDownloaded?.(() => {
+    const cleanupUpdateDownloaded = window.pathmaker4u.onUpdateDownloaded?.(() => {
       setUpdateStatus("downloaded");
       setUpdateProgress(100);
     });
@@ -127,7 +146,7 @@ export default function App() {
   }, []);
 
   const handleInstallUpdate = async () => {
-    await window.coprep?.quitAndInstall?.();
+    await window.pathmaker4u?.quitAndInstall?.();
   };
 
   // Click-through + scroll: pass mouse events through to apps beneath the
@@ -135,25 +154,29 @@ export default function App() {
   // `forward: true` is always set so the renderer still receives pointer moves
   // and scroll events even when click-through is active.
   useEffect(() => {
-    if (!window.coprep?.setIgnoreMouseEvents) return;
+    if (!window.pathmaker4u?.setIgnoreMouseEvents) return;
 
     // Interactive selectors — anything the user needs to click or scroll in.
     const INTERACTIVE_SELECTOR =
-      ".header, .update-banner, .transcript-panel, .copilot-response";
+      ".header, .update-banner, .credit-banner, .transcript-panel, .copilot-response";
 
     let isIgnoring = false;
 
     const onMouseMove = (e: MouseEvent) => {
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      // Consider interactive if cursor is inside a panel or any of its children
-      const overInteractive = el?.closest(INTERACTIVE_SELECTOR) !== null;
+      // Interactive if the cursor is inside a panel or any of its children.
+      // Must be a truthiness check, not `!== null`: when elementFromPoint finds
+      // nothing, `el?.closest()` is undefined, and `undefined !== null` is true —
+      // which would make empty transparent areas swallow clicks meant for the
+      // app underneath.
+      const overInteractive = Boolean(el?.closest(INTERACTIVE_SELECTOR));
 
       if (overInteractive && isIgnoring) {
         isIgnoring = false;
-        window.coprep!.setIgnoreMouseEvents(false);
+        window.pathmaker4u!.setIgnoreMouseEvents(false);
       } else if (!overInteractive && !isIgnoring) {
         isIgnoring = true;
-        window.coprep!.setIgnoreMouseEvents(true);
+        window.pathmaker4u!.setIgnoreMouseEvents(true);
       }
     };
 
@@ -161,14 +184,14 @@ export default function App() {
     // Ensure click-through is off when the component unmounts
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
-      window.coprep?.setIgnoreMouseEvents(false);
+      window.pathmaker4u?.setIgnoreMouseEvents(false);
     };
   }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      console.log("[CoPrep Desktop] Unmount cleanup");
+      console.log("[PathMaker4u] Unmount cleanup");
       if (socketClient) socketClient.disconnect();
       if (deepgramConnection) deepgramConnection.finish();
       if (micAudioStream) micAudioStream.getTracks().forEach((t) => t.stop());
@@ -313,7 +336,7 @@ export default function App() {
 
         if (isCleanedUp) return;
 
-        console.log("[CoPrep Desktop] Creating Deepgram live client...");
+        console.log("[PathMaker4u] Creating Deepgram live client...");
         const deepgram = createClient(accessToken);
         connection = deepgram.listen.live({
           model: "nova-2",
@@ -369,14 +392,14 @@ export default function App() {
             //   dominant speaker → the mic is picking up the interviewer's
             //   voice from the speakers. Suppress it.
             if (speaker === "user" && isInterviewerSpeaking.current) {
-              // console.log("[CoPrep Desktop] Echo suppressed (interviewer → mic)");
+              // console.log("[PathMaker4u] Echo suppressed (interviewer → mic)");
               // return; // Disabled: This can accidentally drop the first words of a valid user utterance
             }
             // Case 2: System-audio channel (interviewer) fires while the user
             //   is the dominant mic speaker → the system audio is picking up
             //   the user's voice via loopback or speaker bleed. Suppress it.
             if (speaker === "interviewer" && isUserSpeaking.current) {
-              // console.log("[CoPrep Desktop] Echo suppressed (user → system)");
+              // console.log("[PathMaker4u] Echo suppressed (user → system)");
               // return; // Disabled: This can accidentally drop the first words of a valid interviewer utterance
             }
             // ────────────────────────────────────────────────────────────────
@@ -423,7 +446,7 @@ export default function App() {
         });
 
         connection.on(LiveTranscriptionEvents.Error, (err) => {
-          console.error("[CoPrep Desktop] Deepgram ERROR:", JSON.stringify(err, null, 2), err.message || err);
+          console.error("[PathMaker4u] Deepgram ERROR:", JSON.stringify(err, null, 2), err.message || err);
         });
       } catch (err) {
         console.error("Failed to setup Deepgram:", err);
@@ -452,7 +475,7 @@ export default function App() {
 
     const audioContext = getGlobalAudioContext();
     audioContext.resume().then(() => {
-      console.log("[CoPrep Desktop] PCM AudioContext resumed. State:", audioContext.state);
+      console.log("[PathMaker4u] PCM AudioContext resumed. State:", audioContext.state);
     });
 
     const source = audioContext.createMediaStreamSource(combinedStream);
@@ -471,12 +494,12 @@ export default function App() {
       frameCount++;
       const conn = deepgramConnectionRef.current;
       if (!conn || conn.getReadyState() !== 1) {
-        if (frameCount % 100 === 0) console.log("[CoPrep Desktop] Waiting for Deepgram connection...", conn?.getReadyState?.());
+        if (frameCount % 100 === 0) console.log("[PathMaker4u] Waiting for Deepgram connection...", conn?.getReadyState?.());
         return;
       }
 
       if (frameCount % 100 === 0) {
-        console.log("[CoPrep Desktop] Sending PCM chunk to Deepgram", frameCount);
+        console.log("[PathMaker4u] Sending PCM chunk to Deepgram", frameCount);
       }
 
       const left = event.inputBuffer.getChannelData(0);
@@ -492,7 +515,7 @@ export default function App() {
       try {
         conn.send(interleaved.buffer);
       } catch (err) {
-        console.error("[CoPrep Desktop] Failed to send PCM data:", err);
+        console.error("[PathMaker4u] Failed to send PCM data:", err);
       }
     };
 
@@ -505,9 +528,9 @@ export default function App() {
   }, [combinedStream]);
 
   const handleStartSession = () => {
-    console.log("[CoPrep Desktop] Starting new session, opening web copilot");
-    if (window.coprep?.openExternal) {
-      window.coprep.openExternal(
+    console.log("[PathMaker4u] Starting new session, opening web copilot");
+    if (window.pathmaker4u?.openExternal) {
+      window.pathmaker4u.openExternal(
         import.meta.env.VITE_PUBLIC_FRONTEND_BASE || "https://aicoprepare.vercel.app"
       );
     }
@@ -525,11 +548,11 @@ export default function App() {
       });
       const track = mic.getAudioTracks()[0];
       console.log(
-        `[CoPrep Desktop] Microphone audio stream acquired: ${track.label}`
+        `[PathMaker4u] Microphone audio stream acquired: ${track.label}`
       );
       return mic;
     } catch (err) {
-      console.error("[CoPrep Desktop] Failed to acquire microphone audio", err);
+      console.error("[PathMaker4u] Failed to acquire microphone audio", err);
       alert(
         "Unable to access microphone. Please grant permission and try again."
       );
@@ -540,13 +563,13 @@ export default function App() {
   const captureDesktopAudioOnly = async (): Promise<MediaStream | null> => {
     try {
       // Check if capture API is available
-      if (!window.coprep?.startAudioCapture) {
-        console.error("[CoPrep Desktop] Audio capture API not available");
+      if (!window.pathmaker4u?.startAudioCapture) {
+        console.error("[PathMaker4u] Audio capture API not available");
         return null;
       }
 
       console.log(
-        "[CoPrep Desktop] Starting audio capture via hidden window..."
+        "[PathMaker4u] Starting audio capture via hidden window..."
       );
 
       // Create AudioContext for receiving PCM samples from capture window
@@ -597,7 +620,7 @@ export default function App() {
       oscillator.start();
 
       // Set up listener for incoming audio samples from capture window
-      const cleanupListener = window.coprep.onAudioData((data: ArrayBuffer) => {
+      const cleanupListener = window.pathmaker4u.onAudioData((data: ArrayBuffer) => {
         // Convert ArrayBuffer (which is actually number[]) to array
         const samples = Array.isArray(data)
           ? data
@@ -625,27 +648,27 @@ export default function App() {
           resolve(started);
         };
 
-        cleanupStartedListener = window.coprep.onAudioCaptureStarted(() => {
+        cleanupStartedListener = window.pathmaker4u.onAudioCaptureStarted(() => {
           finish(true);
         });
 
-        cleanupErrorListener = window.coprep.onAudioCaptureError((error) => {
-          console.warn("[CoPrep Desktop] Desktop audio capture unavailable:", error);
+        cleanupErrorListener = window.pathmaker4u.onAudioCaptureError((error) => {
+          console.warn("[PathMaker4u] Desktop audio capture unavailable:", error);
           finish(false);
         });
 
         statusTimeout = setTimeout(() => {
-          console.warn("[CoPrep Desktop] Timed out waiting for desktop audio capture");
+          console.warn("[PathMaker4u] Timed out waiting for desktop audio capture");
           finish(false);
         }, 8000);
       });
 
       // Start capture in hidden window
-      const captureCommandSent = await window.coprep.startAudioCapture();
+      const captureCommandSent = await window.pathmaker4u.startAudioCapture();
 
       if (!captureCommandSent) {
         console.error(
-          "[CoPrep Desktop] Failed to start capture in hidden window"
+          "[PathMaker4u] Failed to start capture in hidden window"
         );
         cleanupStartedListener();
         cleanupErrorListener();
@@ -661,7 +684,7 @@ export default function App() {
         cleanupStartedListener();
         cleanupErrorListener();
         cleanupListener();
-        await window.coprep?.stopAudioCapture?.();
+        await window.pathmaker4u?.stopAudioCapture?.();
         oscillator.stop();
         scriptProcessor.disconnect();
         gainNode.disconnect();
@@ -671,14 +694,14 @@ export default function App() {
       }
 
       console.log(
-        "[CoPrep Desktop] Desktop audio capture started via hidden window"
+        "[PathMaker4u] Desktop audio capture started via hidden window"
       );
 
       // Store cleanup function for later
       const stream = destination.stream;
       (stream as any)._cleanupCapture = async () => {
         cleanupListener();
-        await window.coprep?.stopAudioCapture?.();
+        await window.pathmaker4u?.stopAudioCapture?.();
         oscillator.stop();
         scriptProcessor.disconnect();
         audioContext.close();
@@ -687,7 +710,7 @@ export default function App() {
       return stream;
     } catch (err) {
       console.error(
-        "[CoPrep Desktop] Failed to start desktop audio capture",
+        "[PathMaker4u] Failed to start desktop audio capture",
         err
       );
       return null;
@@ -710,12 +733,28 @@ export default function App() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
+
+        // 402 = out of credits. Surface it plainly rather than as a generic
+        // "failed to start" — the fix is buying credits on the web dashboard.
+        if (response.status === 402) {
+          setCreditBalance(errorData.balance ?? 0);
+          throw new Error(
+            errorData.message ||
+              "You're out of credits. Top up on the PathMaker4u dashboard to start a session."
+          );
+        }
+
         throw new Error(errorData.message || "Failed to start interview");
       }
 
       const res = await response.json();
       if (!res.id) throw new Error("Invalid session response");
+
+      // Billing runs from the server's started_at, so anchor the on-screen
+      // timer to it too. Falls back to now if the field is ever missing.
+      const startedAtMs = res.started_at ? new Date(res.started_at).getTime() : Date.now();
+      setSessionStartedAt(Number.isFinite(startedAtMs) ? startedAtMs : Date.now());
 
       sessionStorage.setItem("interviewSessionData", JSON.stringify(res));
       sessionStorage.removeItem("interviewAnswers");
@@ -726,29 +765,53 @@ export default function App() {
         userId: sessionData.userId!,
         language: selectedLanguage,
         onTranscript: () => { }, // Handled by Deepgram SDK now
-        onAnswerStart: () => {
+        onAnswerStart: (data: AIAnswerStart) => {
           console.log("🚀 AI Answer streaming started");
           setCurrentStreamingAnswer("");
+          // Show what's being answered straight away, before any text arrives.
+          setCurrentQuestion(data.question);
+          setCurrentSource(data.source);
         },
         onAnswerChunk: (data: AIAnswerChunk) => {
           setCurrentStreamingAnswer((prev) => prev + data.chunk);
         },
         onAnswer: (ans: AIAnswer) => {
-          console.log("\n[CoPrep Desktop] AI Answer received:\n", ans.answer, "\n");
+          console.log("\n[PathMaker4u] AI Answer received:\n", ans.answer, "\n");
           setAnswers((prev) => {
             const updated = [...prev, ans];
             sessionStorage.setItem("interviewAnswers", JSON.stringify(updated));
             return updated;
           });
+          // The completed answer carries its own question now, so clear the
+          // in-flight copy to avoid it lingering above the next stream.
           setCurrentStreamingAnswer("");
+          setCurrentQuestion(undefined);
+          setCurrentSource(undefined);
         },
         onError: (error) => {
-          console.error("[CoPrep Desktop] Socket error:", error);
+          console.error("[PathMaker4u] Socket error:", error);
         },
         onTranscriptSkipped: (data: TranscriptSkipped) => {
-          console.log(`[CoPrep Desktop] Transcript skipped (no response needed): "${data.text.substring(0, 60)}..."`);
+          console.log(`[PathMaker4u] Transcript skipped (no response needed): "${data.text.substring(0, 60)}..."`);
           // The transcript is already shown in the panel via Deepgram.
           // No AI answer generated — user can click "Answer" to override.
+        },
+        onCreditsUpdate: (data: CreditsUpdate) => {
+          setCreditBalance(data.balance);
+          // Clear a stale warning once the balance is comfortable again
+          // (e.g. the user topped up mid-session).
+          if (data.balance > 5) setCreditNotice(null);
+        },
+        onCreditsWarning: (data: CreditsWarning) => {
+          setCreditBalance(data.balance);
+          setCreditNotice(data.message);
+        },
+        onSessionTerminated: (data: SessionTerminated) => {
+          setCreditBalance(data.balance);
+          // The server has already ended this session, so tear down locally
+          // without calling /end again — that would 409.
+          void teardownSession({ notifyServer: false });
+          alert(data.message);
         },
       });
 
@@ -758,7 +821,7 @@ export default function App() {
       console.log("🔌 Socket client initialized and connected");
     } catch (error) {
       console.error(
-        "[CoPrep Desktop] Error starting interview session:",
+        "[PathMaker4u] Error starting interview session:",
         error
       );
       if (socketClient) {
@@ -773,7 +836,7 @@ export default function App() {
 
   const handleJoinSession = async () => {
     if (!sessionData) return;
-    console.log("[CoPrep Desktop] Joining session...");
+    console.log("[PathMaker4u] Joining session...");
 
     // Synchronously create and resume AudioContext right as the user clicks
     getGlobalAudioContext();
@@ -800,7 +863,7 @@ export default function App() {
       await verifyUser();
       await startInterviewSession();
     } catch (error) {
-      console.error("[CoPrep Desktop] Error during join session setup", error);
+      console.error("[PathMaker4u] Error during join session setup", error);
       if (micAudioStream) micAudioStream.getTracks().forEach((t) => t.stop());
       if (desktopAudioStream)
         desktopAudioStream.getTracks().forEach((t) => t.stop());
@@ -829,7 +892,7 @@ export default function App() {
         alert("User verification failed.");
         return;
       }
-      console.log("[CoPrep Desktop] User verification successful");
+      console.log("[PathMaker4u] User verification successful");
     } catch (err) {
       console.error("Verification error:", err);
       alert("Failed to verify user.");
@@ -889,13 +952,24 @@ export default function App() {
   };
 
   const handleManualQuestion = (question: string) => {
-    if (socketClient && question.trim()) {
-      // Use requestAnswer so it bypasses the intent classifier
-      socketClient.requestAnswer(
-        question.trim(),
-        getLanguageName(selectedLanguage)
-      );
+    const trimmed = question.trim();
+    if (!trimmed) return;
+
+    // Read from the ref, not the state variable: this callback is handed to
+    // child components and can outlive the render it was created in, so the
+    // captured `socketClient` may be stale (null) even mid-session.
+    const client = socketClientRef.current ?? socketClient;
+
+    if (!client) {
+      console.warn("[PathMaker4u] Manual question ignored — no active session");
+      return;
     }
+
+    console.log(`[PathMaker4u] Manual question: "${trimmed.substring(0, 60)}"`);
+    // requestAnswer bypasses the intent classifier — the user explicitly asked,
+    // so it should always produce an answer.
+    client.requestAnswer(trimmed, getLanguageName(selectedLanguage));
+    setCurrentStreamingAnswer("");
   };
 
   const handleAnswerModeChange = (mode: "auto" | "normal") => {
@@ -903,7 +977,7 @@ export default function App() {
     if (socketClient) {
       socketClient.setAnswerMode(mode);
     }
-    console.log(`[CoPrep Desktop] Answer mode changed to: ${mode}`);
+    console.log(`[PathMaker4u] Answer mode changed to: ${mode}`);
   };
 
   const handleAnalyzeScreen = useCallback(async () => {
@@ -916,11 +990,11 @@ export default function App() {
       if (
         !isSessionStarted ||
         !socketClient ||
-        !window.coprep?.getScreenSources
+        !window.pathmaker4u?.getScreenSources
       ) {
         return;
       }
-      const sources = await window.coprep.getScreenSources();
+      const sources = await window.pathmaker4u.getScreenSources();
       if (!sources || sources.length === 0) return;
       const screenSource = sources[0]; // Simplified for brevity
 
@@ -972,9 +1046,9 @@ export default function App() {
   }, [isSessionStarted, socketClient]);
 
   useEffect(() => {
-    if (!window.coprep?.onAnalyzeScreenShortcut) return;
+    if (!window.pathmaker4u?.onAnalyzeScreenShortcut) return;
 
-    return window.coprep.onAnalyzeScreenShortcut(() => {
+    return window.pathmaker4u.onAnalyzeScreenShortcut(() => {
       handleAnalyzeScreen();
     });
   }, [handleAnalyzeScreen]);
@@ -987,13 +1061,20 @@ export default function App() {
       });
       setIsMicEnabled(enabled);
       console.log(
-        `[CoPrep Desktop] Microphone ${enabled ? "unmuted" : "muted"}`
+        `[PathMaker4u] Microphone ${enabled ? "unmuted" : "muted"}`
       );
     }
   };
 
-  const handleEndSession = async () => {
-    console.log("[CoPrep Desktop] Ending session...");
+  /**
+   * Tears the session down locally and, unless told otherwise, tells the server.
+   *
+   * `notifyServer: false` is used when the server ended the session itself
+   * (e.g. credits exhausted) — calling /end again would 409 against an
+   * already-ended session.
+   */
+  const teardownSession = async ({ notifyServer = true }: { notifyServer?: boolean } = {}) => {
+    console.log("[PathMaker4u] Ending session...");
     try {
       if (socketClient) {
         socketClient.disconnect();
@@ -1018,7 +1099,7 @@ export default function App() {
 
       // ... server end session call ...
       const storedSessionData = sessionStorage.getItem("interviewSessionData");
-      if (storedSessionData && sessionData?.token) {
+      if (notifyServer && storedSessionData && sessionData?.token) {
         const sessionInfo = JSON.parse(storedSessionData);
         await fetch(`${baseUrl}/interviews/${sessionInfo.id}/end`, {
           method: "PUT",
@@ -1040,12 +1121,16 @@ export default function App() {
       setCurrentStreamingAnswer("");
       setTranscript([]);
       setHasDeepLinkData(false);
+      setCreditNotice(null);
+      setSessionStartedAt(null);
       sessionStorage.removeItem("interviewSessionData");
       sessionStorage.removeItem("interviewAnswers");
     } catch (err) {
       console.error("Error ending session:", err);
     }
   };
+
+  const handleEndSession = () => teardownSession({ notifyServer: true });
 
   return (
     <div className="app-container">
@@ -1056,6 +1141,8 @@ export default function App() {
         selectedLanguage={selectedLanguage}
         onLanguageChange={handleLanguageChange}
         isSessionStarted={isSessionStarted}
+        sessionStartedAt={sessionStartedAt}
+        creditBalance={creditBalance}
         onEnd={handleEndSession}
         onAnalyzeScreen={handleAnalyzeScreen}
         isMicEnabled={isMicEnabled}
@@ -1063,6 +1150,22 @@ export default function App() {
         answerMode={answerMode}
         onAnswerModeChange={handleAnswerModeChange}
       />
+      {creditNotice && isSessionStarted && (
+        <div className="credit-banner">
+          <span className="credit-banner-dot" />
+          <span className="credit-banner-text">{creditNotice}</span>
+          {creditBalance !== null && (
+            <span className="credit-banner-count">{creditBalance} min left</span>
+          )}
+          <button
+            className="credit-banner-x"
+            onClick={() => setCreditNotice(null)}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {updateStatus !== "idle" && (
         <div className="update-banner">
           <div className="update-copy">
@@ -1087,6 +1190,8 @@ export default function App() {
           isSessionStarted={isSessionStarted}
           answers={answers}
           currentStreamingAnswer={currentStreamingAnswer}
+          currentQuestion={currentQuestion}
+          currentSource={currentSource}
           onSubmitQuestion={handleManualQuestion}
         />
         <TranscriptPanel

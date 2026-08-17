@@ -1,9 +1,9 @@
 {
   "name": "coprep-desktop",
-  "productName": "CoPrep-AI",
+  "productName": "PathMaker4u-AI",
   "version": "3.2.0",
   "description": "",
-  "author": "CoPrep AI <support@coprep.ai> (https://www.coprep.ai)",
+  "author": "PathMaker4u <support@coprep.ai> (https://www.coprep.ai)",
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5555 concurrently \"vite --config renderer/vite.config.ts --port 5555\" \"tsc -p tsconfig.electron.json -w\" \"wait-on http://localhost:5555 && electron .\"",
@@ -26,7 +26,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/coprep-ai/CoPrep-desktop-releases.git"
+    "url": "git+https://github.com/coprep-ai/PathMaker4u-desktop-releases.git"
   },
   "keywords": [
     "interview",
@@ -38,9 +38,9 @@
   "license": "MIT",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/coprep-ai/CoPrep-desktop-releases/issues"
+    "url": "https://github.com/coprep-ai/PathMaker4u-desktop-releases/issues"
   },
-  "homepage": "https://github.com/coprep-ai/CoPrep-desktop-releases#readme",
+  "homepage": "https://github.com/coprep-ai/PathMaker4u-desktop-releases#readme",
   "dependencies": {
     "@deepgram/sdk": "^4.11.2",
     "@types/react-syntax-highlighter": "^15.5.13",

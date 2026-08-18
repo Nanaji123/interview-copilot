@@ -521,7 +521,25 @@ function createWindow() {
   );
 }
 
-function handleDeepLink(rawUrl: string) {
+/**
+ * Same backend the website talks to (see allowedDomains/CSP above). The deep
+ * link only carries a short handoff id — the actual session payload (job
+ * description, CV text, etc.) is fetched from here, because that payload
+ * routinely exceeds the ~2000 character length ShellExecute will pass to a
+ * registered protocol handler on Windows.
+ */
+const API_BASE = "https://aicoprepare-backend.onrender.com/api";
+
+async function fetchHandoffSession(id: string, token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/session-handoff/${encodeURIComponent(id)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Handoff fetch failed: ${res.status}`);
+  const { payload } = await res.json();
+  return payload;
+}
+
+async function handleDeepLink(rawUrl: string) {
   try {
     const u = new URL(rawUrl);
     if (!PROTOCOLS.some((scheme) => u.protocol === `${scheme}:`)) return;
@@ -531,6 +549,7 @@ function handleDeepLink(rawUrl: string) {
     const token = u.searchParams.get("token");
     const userId = u.searchParams.get("userId");
     const sessionParam = u.searchParams.get("session");
+    const handoffId = u.searchParams.get("handoff");
     const credits = u.searchParams.get("credits");
     let session: any = undefined;
     if (sessionParam) {
@@ -545,6 +564,12 @@ function handleDeepLink(rawUrl: string) {
         } catch {
           session = undefined;
         }
+      }
+    } else if (handoffId && token) {
+      try {
+        session = await fetchHandoffSession(handoffId, token);
+      } catch (e) {
+        console.error("[PathMaker4u] Failed to fetch handoff session:", e);
       }
     }
 

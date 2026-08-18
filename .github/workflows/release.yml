@@ -49,3 +49,25 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # A missing MAC_CSC_LINK does not fail the build — electron-builder just
+      # ad-hoc signs and carries on, which is how an unsigned release shipped
+      # before. Fail loudly here instead of publishing something that greets
+      # every user with "is damaged and can't be opened".
+      - name: Verify macOS build is signed and notarized
+        if: matrix.os == 'macos-latest'
+        run: |
+          APP=$(find release -maxdepth 2 -name "*.app" -print -quit)
+          if [ -z "$APP" ]; then echo "::error::No .app found in release/"; exit 1; fi
+          echo "Checking $APP"
+          if ! codesign -dv --verbose=2 "$APP" 2>&1 | grep -q "Developer ID Application"; then
+            echo "::error::Not signed with a Developer ID certificate — is MAC_CSC_LINK set?"
+            codesign -dv --verbose=2 "$APP" 2>&1 | head -5
+            exit 1
+          fi
+          if ! spctl -a -vvv -t exec "$APP" 2>&1 | grep -q "source=Notarized Developer ID"; then
+            echo "::error::Signed but NOT notarized — check APPLE_* secrets."
+            spctl -a -vvv -t exec "$APP" 2>&1 | head -5
+            exit 1
+          fi
+          echo "✓ signed and notarized"

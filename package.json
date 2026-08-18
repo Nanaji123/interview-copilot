@@ -23,7 +23,9 @@
     "release": "npm run build && electron-builder --publish always",
     "audit-security": "npm audit --audit-level moderate",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "node scripts/patch-dmg-builder.js"
+    "postinstall": "node scripts/patch-dmg-builder.js",
+    "dist:mac:signed": "set -a && . ./.env.signing && set +a && npm run build && electron-builder --mac",
+    "dist:mac:unsigned": "CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac"
   },
   "repository": {
     "type": "git",
@@ -56,7 +58,6 @@
   },
   "devDependencies": {
     "@electron/fuses": "^1.8.0",
-    "@electron/notarize": "^3.1.1",
     "@electron/osx-sign": "^2.3.0",
     "@types/node": "^24.5.2",
     "@types/react": "^18.2.21",

@@ -2,7 +2,7 @@
   "appId": "com.coprep.desktop",
   "productName": "PathMaker4u-AI",
   "artifactName": "PathMaker4u-Setup-${arch}.${ext}",
-  "copyright": "Copyright © 2026 PathMaker4u",
+  "copyright": "Copyright \u00a9 2026 PathMaker4u",
   "directories": {
     "output": "release",
     "buildResources": "assets"
@@ -25,7 +25,6 @@
     }
   ],
   "mac": {
-    "identity": null,
     "category": "public.app-category.productivity",
     "icon": "assets/logo.icns",
     "hardenedRuntime": true,
@@ -56,7 +55,7 @@
         ]
       }
     ],
-    "notarize": false
+    "notarize": true
   },
   "dmg": {
     "icon": "assets/logo.icns",
@@ -131,6 +130,5 @@
       "repo": "pathmaker4u-desktop-releases",
       "releaseType": "draft"
     }
-  ],
-  "afterSign": "scripts/notarize.js"
+  ]
 }

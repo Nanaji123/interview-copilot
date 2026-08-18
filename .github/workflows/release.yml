@@ -40,7 +40,12 @@ jobs:
           # secrets.GITHUB_TOKEN only covers this repo, not the separate
           # releases repo electron-builder.json publishes to.
           GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
-          # macOS notarization (scripts/notarize.js skips silently if unset).
+          # macOS signing. CI runners have an empty keychain, so the
+          # Developer ID cert must be supplied as a base64 .p12 — without these
+          # the mac build is unsigned and notarization cannot succeed.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          # macOS notarization via electron-builder's built-in notarize.
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

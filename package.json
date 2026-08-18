@@ -19,6 +19,7 @@
     "dist:publish": "npm run build && electron-builder --publish always",
     "release:mac": "npm run build && electron-builder --mac --publish always",
     "release:win": "npm run build && electron-builder --win --publish always",
+    "release:linux": "npm run build && electron-builder --linux --publish always",
     "release": "npm run build && electron-builder --publish always",
     "audit-security": "npm audit --audit-level moderate",
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -26,7 +27,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/coprep-ai/PathMaker4u-desktop-releases.git"
+    "url": "git+https://github.com/pathmaker4u-ai/pathmaker4u-desktop-releases.git"
   },
   "keywords": [
     "interview",
@@ -38,9 +39,9 @@
   "license": "MIT",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/coprep-ai/PathMaker4u-desktop-releases/issues"
+    "url": "https://github.com/pathmaker4u-ai/pathmaker4u-desktop-releases/issues"
   },
-  "homepage": "https://github.com/coprep-ai/PathMaker4u-desktop-releases#readme",
+  "homepage": "https://github.com/pathmaker4u-ai/pathmaker4u-desktop-releases#readme",
   "dependencies": {
     "@deepgram/sdk": "^4.11.2",
     "@types/react-syntax-highlighter": "^15.5.13",

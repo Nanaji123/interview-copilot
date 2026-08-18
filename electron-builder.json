@@ -1,7 +1,7 @@
 {
   "appId": "com.coprep.desktop",
-  "productName": "CoPrep-AI",
-  "artifactName": "CoPrepAI-Setup-${arch}.${ext}",
+  "productName": "PathMaker4u-AI",
+  "artifactName": "PathMaker4u-Setup-${arch}.${ext}",
   "copyright": "Copyright © 2026 PathMaker4u",
   "directories": {
     "output": "release",
@@ -127,8 +127,8 @@
   "publish": [
     {
       "provider": "github",
-      "owner": "CoPrep-AI",
-      "repo": "CoPrep-desktop-releases",
+      "owner": "pathmaker4u-ai",
+      "repo": "pathmaker4u-desktop-releases",
       "releaseType": "draft"
     }
   ],
